@@ -14,10 +14,7 @@ def getPDFContent(path):
   p = file(path, "rb")
   pdf = pyPdf.PdfFileReader(p)
   num_pages = pdf.getNumPages()
-  #for i in range(0, num_pages):
-    #pagecontent = pdf.getPage(i).extractText()
-    #content = content + pagecontent + " "
-  for i in range(0, 4):
+  for i in range(0, num_pages):
     pagecontent = pdf.getPage(i).extractText()
     content = content + pagecontent + " "
   return content
@@ -57,11 +54,8 @@ def getSubclass(returnedcontent, incontent):
   subcontent = re.compile(subcontentpat)
   # append "Subclass" to returnedcontent
   subclassname = ""
-  # remove whitespace before name of Subclass
-  while not subcontent.match(incontent[0]):
-    incontent.pop(0)
   # pop subcontent id and initiate n to count how many tabs
-  n = 1
+  n = 0
   incontent.pop(0)
   # get total amount of indentation
   while not incontent[0]:
@@ -74,11 +68,8 @@ def getSubclass(returnedcontent, incontent):
     subclassname = subclassname + " " + incontent.pop(0)
   # remove linefeed character if it's there
   if not incontent[0]:
-    incontent.pop(0)
-    # remove extratab if it's there 
-    if not incontent[0]:
+    if incontent[1]:
       incontent.pop(0)
-    else:
       while 0<len(incontent) and incontent[0] and not (subcontent.match(incontent[0]) and subcontent.match(incontent[0]).span()[1] == len(incontent[0])):
         subclassname = subclassname + " " + incontent.pop(0)
   returnedcontent.append(subclassname.strip())
@@ -87,13 +78,18 @@ def getSubclass(returnedcontent, incontent):
 
 def getSubclassContents(returnedcontent, incontent, minindent):
   subcontentpat = "[A-Z]+\(?[0-9.A-Z]*\)?-?\(?[0-9.A-Z]*\)?"
+  accronympat = "([A-Z]\.)+"
   subcontent = re.compile(subcontentpat)
+  accronym = re.compile(accronympat)
   n = 1
   while not incontent[0]:
     n = n + 1
     incontent.pop(0)
   if not subcontent.match(incontent[0]):
-    returnedcontent.append(n)
+    if (n - minindent) <=0:
+      returnedcontent.append(0)
+    else :
+      returnedcontent.append(n-minindent)
     nameofsubcontent = ""
     while incontent[0] and not (subcontent.match(incontent[0]) and subcontent.match(incontent[0]).span()[1] == len(incontent[0])):
       nameofsubcontent = nameofsubcontent + " " + incontent.pop(0)
@@ -107,7 +103,6 @@ def getSubclassContents(returnedcontent, incontent, minindent):
       incontent.pop(0)
     elif not incontent[0]:
       incontent.pop(0)
-      # remove extratab after line feed character
       if not incontent[0]:
         incontent.pop(0)
     n = 1
@@ -115,9 +110,12 @@ def getSubclassContents(returnedcontent, incontent, minindent):
       n = n + 1
       incontent.pop(0)
     if 0<len(incontent) and not (subcontent.match(incontent[0]) and subcontent.match(incontent[0]).span()[1] == len(incontent[0])):
-      returnedcontent.append(n-minindent)
+      if (n - minindent) <= 0:
+        returnedcontent.append(0)
+      else:
+        returnedcontent.append(n-minindent)
       nameofsubcontent = ""
-      while 0<len(incontent) and incontent[0] and not (subcontent.match(incontent[0]) and subcontent.match(incontent[0]).span()[1] == len(incontent[0])) and not (incontent[0]=="Subclass" or incontent[0]=="Subclasses"):
+      while 0<len(incontent) and incontent[0] and (not (subcontent.match(incontent[0]) and subcontent.match(incontent[0]).span()[1] == len(incontent[0])) or accronym.match(incontent[0])) and not (incontent[0]=="Subclass" or incontent[0]=="Subclasses"):
         nameofsubcontent = nameofsubcontent + " " + incontent.pop(0)
       # special case where "subcontent" is part of the name of the folder
       if (nameofsubcontent.endswith(",") or nameofsubcontent.endswith(" see")):
@@ -133,8 +131,41 @@ def getSubclassContents(returnedcontent, incontent, minindent):
 def convert_pdf(path):
   pdfContent = getPDFContent(path)
   separatedContent = getSeparatedContent(pdfContent)
-  for element in separatedContent:
-    print element
+  theclass = separatedContent.pop(0)
+  classname = separatedContent.pop(0)
+  classfolder = OrderedBTreeFolder(classname)
+  while 0<len(separatedContent):
+    appendSubclasses(classfolder, separatedContent)
   return
+
+def appendSubclasses(classfolder, content):
+  folders = []
+  content.pop(0)
+  subclassname = content.pop(0)
+  subclassfolder = OrderedBTreeFolder(subclassname)
+  print subclassname
+  try:
+    classfolder._setOb(subclassfolder.id, subclassfolder)
+  except KeyError:
+    subclassfolder = classfolder._getOb(subclassfolder.id)
+  folders.append(subclassfolder)
+
+  leveloffolder = 0
+  while len(content) > 0 and not (content[0] == "Subclass" or content[0]=="Subclasses"):
+    leveloffolder = content.pop(0)
+    while leveloffolder>= len(folders):
+      folders.append(folders[-1])
+    nameoffolder = content.pop(0)
+    tempfolder = OrderedBTreeFolder(nameoffolder)
+    parent = folders[leveloffolder]
+    parent._setOb(tempfolder.id, tempfolder)
+    print " " + unicode(" " * leveloffolder) + nameoffolder
+    if leveloffolder + 1 >= len(folders):
+      folders.append(tempfolder)
+    else:
+      while leveloffolder + 1 < len(folders):
+        folders[leveloffolder+1]=tempfolder
+        leveloffolder = leveloffolder + 1
+
 
 if __name__ == '__main__': sys.exit(main(sys.argv))
